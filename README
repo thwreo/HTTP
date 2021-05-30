@@ -1,0 +1,161 @@
+*****OBS*****
+- Am folosit buffer.c buffer.h helpers.c helpers.h si o 
+portiune din request.c request.h din laboratorul 10 - protocolul HTTP
+- De asemenea, parson.c si parson.h au fost descarcate 
+de pe https://github.com/kgabis/parson
+- Pentru fiecare "functie" in parte (login/logout/register etc) 
+am deschis un socket si l-am inchis la finalul executiei 
+(cand deschideam un socket in client.c inainte de bucla "while",
+socket-ul se inchidea random si am decis sa il deschid/inchid
+de fiecare data, pentru siguranta)
+
+_______client.c_______
+
+- BUFLEN se afla in helpers.h (din laborator 10)
+- jwt - folosit pentru verificarea integritatii (daca utilizatorul
+poate efectua modificari)
+- buffer-ul este setat pe 0; se primesc instructiuni; daca sunt
+scrise comenzile :
+		~ register : este apelata functia register_ din request.c
+		~ login_ : functia login_ din request.c
+		~ get_books : functia get_books din request.c
+		~ get_book : functia get_book din request.c
+		~ add_book : functia add_book din request.c
+		~ delete_book : functia delete_book din request.c
+		~ logout : functia logout din request.c
+		~ exit : se iese din bucla while si se incheie conexiunea
+
+_______request.c______
+
+- compute_get_request :
+	- primeste un ip (host-ul), un url, parametrii, cookies si jwt
+	- aloca memore pentru mesajul ce va fi trimis server-ului
+	- aloca memorie pentru fiecare linie din mesaj (atasata ulterior
+	la mesajul final)
+	- Step 1 : este pus head-erul pentru numele metodei, URL si
+	parametrii (daca exista)
+	- Step 2 : este adaugat host-ul (ip-ul)
+	- Step 3 : este adaugat campul jwt (de "autorizare") si campul
+	pentru cookies (daca acestea exista)
+	- Step 4 : este adaugata linia de final (new line)
+	- Obs: dupa fiecare "Step", este procesat mesajul, pentru a avea
+	formatul potrivit; also, functie inspirata din laborator
+	- returneaza mesajul ce trebuie trimis catre server, in formatul
+	corespunzator
+
+- compute_post_request :
+	- primeste un ip (host-ul), un url, content-type, corpul cu
+	informatii, cookies si un jwt (este necesar doar la functia 
+	"delete_books")
+	- aloca memorie pentru mesaj/linie/corpul de date
+	- Step 1 : este adaugat numele metodei, URL-ul si tipul
+	de protocol folosit ~ HTTP/1.1
+	- Step 2 : este adaugat host-ul (ip-ul)
+	- Step 3 : content-type (ex : application/json), dimensiunea
+	corpului de date
+	- Step 4 : este adaugat campul de "autorizare" (jwt) si campul 
+	pentru cookies (daca acestea exista)
+	- Step 5 : adaugat new line la final
+	- Step 6 : sunt adaugate datele propriu-zise (in cazul nostru,
+	cam toate au fost de tip json)
+	- Obs: dupa fiecare "Step", este procesat mesajul, pentru a avea
+	formatul potrivit; also, functie inspirata din laborator
+	- returneaza mesajul ce trebuie trimis catre server, in formatul
+	corespunzator
+
+- compute_delete_request :
+	- aloca memorie msg/line
+	- Step 1 : scrie in mesaj numele metodei, URL si protocolul
+	- Step 2 : este adaugat host-ul
+	- Step 3 : jwt si cookies (daca exista)
+	- linie noua
+	- returneaza mesajul in formatul dorit (toate header-ele la locul
+	lor)
+
+Functii folosite in client.c (cerintele temei)
+
+- register :
+	- ip-ul (pentru a deschide socket-ul) si cookies sunt parametrii
+	functiei
+	- daca cookies sunt diferite de NULL (inseamna ca un utilizator
+	este deja logat), pentru a crea un nou cont, trebuie ca 
+	utilizatorul sa se delogheze de la contul curent
+	- este citit username-ul (deoarece este citit cu fgets, 
+	trebuie eliminat new line-ul de la final)
+	- este citita parola (same)
+	- se initializeaza o valoare de tip json si un obiect de tip
+	json
+	- obiectul de tip json este completat (ca in cerinta)
+	- obiectul de tip json este transformat intr-un string
+	- sunt trimise informatiile dorite pentru a fi generat un 
+	mesaj adecvat (pentru a fi trimis si inteles de catre server)
+	- este trimis mesajul catre server
+	- se primeste raspunsul de la server
+	- daca raspunsul contine o eroare de tipul "username folosit
+	deja", este afisat un mesaj de eroare si se incheie executia,
+	altfel este afisat un mesaj de "confirmare"
+
+- login :
+	- ip si cookies parametrii
+	- daca cookies sunt diferite de NULL (inseamna ca un utilizator
+	este deja logat), pentru ca utilizatorul sa se relogheze, trebuie
+	sa dea logout
+	- citit username-ul/citita parola (este sters new line-ul de la 
+	final)
+	- creata valoarea de tip json; creat obiectul de tip json;
+	completat obiectul de tip json; transformata in string valoarea
+	- mesajul este generat
+	- daca raspunsul de la server contine mesajul de confirmare 
+	(200 OK), cookies sunt setate cu noul login
+	- daca parola introdusa este gresita, apare mesaj de eroare
+	- daca nu exista un utilizator cu numele introdus, apare
+	mesaj de eroare
+
+- enter_library :
+	- daca nu sunt valide cookies, inseamna ca niciun utilizator
+	nu este conectat, astfel accesul la bibilioteca este 
+	restrictionat
+	- este generat mesajul dorit si este trimis catre server
+	- daca in raspuns se gaseste un "token" (pentru a garanta
+	accesul la bibilioteca), acesta este copiat in jwt
+
+- get_books :
+	- se verifica permisiunea de accesa bibilioteca (jwt)
+	- este generat mesajul dorit si trimis catre server
+	- daca raspunsul contine un mesaj de confirmare, este afisata
+	lista de carti disponibile
+	- altfel, apare un mesaj de eroare
+
+- logout :
+	- daca cookies nu sunt valide, inseamna ca niciun utilizator nu
+	este conectat, astfel nu este necesara deconectarea acestuia
+	- este generat mesajul dorit si este trimis catre server
+	- daca raspunsul contine un string de confirmare, apare un
+	mesaj de confirmare a delogarii
+
+- get_book :
+	- se verifica permisiunea de accesa bibilioteca (jwt)
+	- se citeste id-ul (daca utilizatorul are acces)
+	- este generat mesajul dorit si trimis catre server
+	- daca raspunsul contine un mesaj de eroare, este
+	afisata o eroare, altfel sunt afisate detaliile cartii
+
+- add_book :
+	- se verifica permisiunea de accesa bibilioteca (jwt)
+	- sunt citite informatiile necesare (titlu/autor etc)
+	- informatiile (daca sunt valide) vor forma un obiect
+	json, ce va fi transformat ulterior in string
+	- este generat mesajul dorit si trimis catre server
+	- se verifica daca raspunsul contine un mesaj de confirmare
+
+- delete_book :
+	- se verifica permisiunea de accesa bibilioteca (jwt)
+	- este citit id-ul
+	- este generat mesajul dorit si trimis catre server
+	- se verifica raspunsul primit (daca contine erori sau nu)
+
+
+_______request.h_______
+
+- contine header-ele functiilor folosite
+
